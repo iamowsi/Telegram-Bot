@@ -1,6 +1,11 @@
 import telebot
 import os  
 import json
+import logging
+
+logger = telebot.logger
+
+logger.setLevel(logging.INFO)
 
 API_TOKEN = os.environ.get("API_TOKEN")
 bot = telebot.TeleBot(API_TOKEN)
