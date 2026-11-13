@@ -19,7 +19,7 @@ bot = telebot.TeleBot(API_TOKEN)
 
 @bot.message_handler(commands=['help','start'])
 def sendwelcome(message):
-    logger.info("triggred we;com")
+    logger.info("triggred welcom")
     bot.reply_to(message,"""hi this is a test """)
 
 @bot.message_handler(commands=['setname'])
