@@ -1,7 +1,6 @@
 import telebot
 import os  
-from telebot import apihelper
-# import json
+from telebot.types import KeyboardButton,ReplyKeyboardMarkup
 import logging
 
 logger = telebot.logger
@@ -11,32 +10,20 @@ logger.setLevel(logging.INFO)
 API_TOKEN = os.environ.get("API_TOKEN")
 bot = telebot.TeleBot(API_TOKEN)
 
-
-# @bot.message_handler(commands=['start', 'help'])
-# def send_welcome(message):
-# 	bot.reply_to(message, "Hiiiiiiii, چیکار میتونم برات کنم?")
-#     # bot.send_message(message.chat.id,json.dumps(message.chat.__dict__,indent = 4,ensure_ascii = False))
-
 @bot.message_handler(commands=['help','start'])
 def sendwelcome(message):
     logger.info("triggred welcom")
-    bot.reply_to(message,"""hi this is a test """)
-
-@bot.message_handler(commands=['setname'])
-def setup_name(message):
-    bot.send_message(message.chat.id,"what is your first name?")
-    bot.register_next_step_handler(message,assign_first_name)
-
-def assign_first_name(message,*args,**kwargs):
-    first_name = message.text
-    bot.send_message(message.chat.id,"what is your last name?")
-    bot.register_next_step_handler(message,assign_last_name,first_name)
-
-def assign_last_name(message,first_name):
-    last_name=message.text
-    bot.send_message(message.chat.id,f"welcome {first_name} {last_name } to my bot")
+    markup = ReplyKeyboardMarkup(input_field_placeholder="choose your answer",resize_keyboard=True,one_time_keyboard=True)
+    markup.add(KeyboardButton("like"),KeyboardButton("dislike"))
+    bot.send_message(message.chat.id,"hi mustafa king what should i do for u?",reply_markup=markup)
 
 
+@bot.message_handler(func=lambda message :message.text == "like")
+def send_like(message):
+    bot.send_message(message.chat.id,"1856 people likes")
+@bot.message_handler(func=lambda message :message.text == "dislike")
+def send_like(message):
+    bot.send_message(message.chat.id,"8564 people dislikes")
 bot.infinity_polling()
 
 
