@@ -16,7 +16,7 @@ def sendwelcome(message):
     markup = InlineKeyboardMarkup()
     codyad=InlineKeyboardButton("codyad",url="https://codyad.com")
     google=InlineKeyboardButton("google",url="https://google.com")
-    test=InlineKeyboardButton("test",callback_data="test")
+    test=InlineKeyboardButton("step1",callback_data="step1")
     
     markup.add(google,codyad)
     markup.add(test)
@@ -24,8 +24,20 @@ def sendwelcome(message):
 
 @bot.callback_query_handler(func=lambda call:True)
 def send_messages(call):
-    if call.data=="test":
-        bot.answer_callback_query(call.id,"callback testing",show_alert=True)
+    if call.data=="step1":
+        markup = InlineKeyboardMarkup()
+        step2 = InlineKeyboardButton("step2",callback_data="step2")
+        cancel = InlineKeyboardButton("cancel" , callback_data="cancel")
+        markup.add(step2,cancel)
+        bot.edit_message_text(chat_id=call.message.chat.id , message_id=call.message.id,text="choose your next?",reply_markup=markup)
+    if call.data == "step2":
+        bot.edit_message_text(chat_id=call.message.chat.id , message_id=call.message.id,text="your ref is = 1465165")
+    if call.data == "cancel":
+        bot.answer_callback_query(call.id,show_alert=True ,text="has been canceled",)
+        bot.delete_message(chat_id=call.message.chat.id,message_id=call.message.id,timeout=5)
+
+
+        # bot.answer_callback_query(call.id,"callback testing",show_alert=True)
 
 
 bot.infinity_polling()
