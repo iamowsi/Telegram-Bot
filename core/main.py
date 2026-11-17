@@ -1,88 +1,70 @@
 import os
 import logging
 import telebot
-import edge_tts
-import asyncio
-import threading
-import time
-from telebot.types import ReplyParameters
-
+from telebot.types import InlineKeyboardButton,InlineKeyboardMarkup
 logger = telebot.logger
 logger.setLevel(logging.INFO)
 
 API_TOKEN = os.environ.get("API_TOKEN")
 bot = telebot.TeleBot(API_TOKEN)
 
-PERSIAN_VOICE = "fa-IR-DilaraNeural"
-
-
-def keep_typing(chat_id, action="record_voice", stop_event=None):
-    """وضعیت 'در حال ضبط' را هر ۴ ثانیه تمدید می‌کند."""
-    while not stop_event.is_set():
-        try:
-            bot.send_chat_action(chat_id, action)
-        except Exception as e:
-            logger.warning(f"chat_action error: {e}")
-        # هر ۴ ثانیه یک‌بار تکرار (چون بعد از ۵ ثانیه منقضی می‌شود)
-        stop_event.wait(4)
-
-
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-    bot.send_message(message.chat.id, "متنت رو بفرست تا برات بخونم (با صدای فارسی)")
+    markup = InlineKeyboardMarkup()
+    cantact_us = InlineKeyboardButton("ارتباط مستقیم با ما",callback_data="cantact_us")
+    problem = InlineKeyboardButton("ثبت مشکل",callback_data="problem")
+    markup.add(cantact_us)
+    markup.add(problem)
+    bot.send_message(message.chat.id, "برای دریافت اطلاعات تماس، روی دکمه زیر کلیک کنید:",reply_markup=markup)
 
+@bot.callback_query_handler(func=lambda call:True)
+def reply_call(call):
+    if call.data=="cantact_us":
+        bot.send_contact(chat_id=call.message.chat.id,
+                         phone_number="+989397579687",
+                         first_name="شرکت",
+                         last_name="شما"
+                         )
+        bot.send_contact(chat_id=call.message.chat.id,
+                         phone_number="+989158567953",
+                         first_name="شرکت",
+                         last_name="شما"
+                         )
 
-@bot.message_handler(func=lambda message: message.text is not None)
-def text_to_speech(message):
-    text = message.text
-    file_name = f'voices/{message.chat.id}_{message.id}.mp3'
-    os.makedirs('voices', exist_ok=True)
+    if call.data=="problem":
+        bot.send_message(call.message.chat.id,"لطفا مشکل خود را وارد نمایید:")
+        bot.register_next_step_handler(call.message, receive_problem)
+def receive_problem(message):
+    if message.text and message.text.startswith('/'):
+        bot.send_message(message.chat.id, "عملیات لغو شد. با /start منو را باز کنید.")
+        return
 
-    # تردی که وضعیت 'در حال ضبط صدا' را نگه می‌دارد
-    stop_event = threading.Event()
-    typing_thread = threading.Thread(
-        target=keep_typing,
-        args=(message.chat.id, "record_voice", stop_event),
-        daemon=True,
-    )
-    typing_thread.start()
-
-    async def generate_audio():
-        communicate = edge_tts.Communicate(text, PERSIAN_VOICE)
-        await communicate.save(file_name)
-
-    try:
-        asyncio.run(generate_audio())
-
-        # الان آماده ارسال است → وضعیت را به 'در حال آپلود' تغییر بده
-        stop_event.set()  # ترد قبلی را متوقف کن
-        typing_thread.join(timeout=1)
-
-        stop_event_upload = threading.Event()
-        upload_thread = threading.Thread(
-            target=keep_typing,
-            args=(message.chat.id, "upload_voice", stop_event_upload),
-            daemon=True,
-        )
-        upload_thread.start()
-
-        with open(file_name, "rb") as voice_file:
-            bot.send_voice(
-                chat_id=message.chat.id,
-                voice=voice_file,
-                reply_parameters=ReplyParameters(message_id=message.id),
-            )
-
-        stop_event_upload.set()
-        upload_thread.join(timeout=1)
-
-    except Exception as e:
-        logger.error(f"TTS error: {e}")
-        stop_event.set()
-        bot.reply_to(message, "متأسفانه نتونستم صدا رو بسازم. دوباره امتحان کن.")
-    finally:
-        if os.path.exists(file_name):
-            os.remove(file_name)
-
-
+    if not message.text or not message.text.strip():
+        bot.send_message(message.chat.id, "⚠️ لطفاً مشکل خود را به صورت متن وارد نمایید.")
+        bot.register_next_step_handler(message, receive_problem)
+        return
+    # if len(receive_problem) < 5:
+    #     bot.send_message(
+    #         message.chat.id,
+    #         "⚠️ توضیح مشکل خیلی کوتاه است. لطفاً کمی بیشتر توضیح دهید."
+    #     )
+    #     bot.register_next_step_handler(message, receive_problem)
+    #     return
+    # normalized = receive_problem.replace(" ", "").replace("-", "").replace(".", "")
+    # if normalized.isdigit():
+    #     bot.send_message(
+    #         message.chat.id,
+    #         "⚠️ لطفاً مشکل خود را به صورت *متنی* توضیح دهید، نه فقط عدد.\n"
+    #         "مثال: «برنامه هنگام ورود باز نمی‌شود»",
+    #         parse_mode="Markdown"
+    #     )
+        # bot.register_next_step_handler(message, receive_problem)
+        # return
+    bot.send_message(
+        message.chat.id,
+        f"✅ مشکل شما با موفقیت ثبت شد.\n\n"
+        f"کارشناسان ما در اسرع وقت با شما تماس خواهند گرفت.\n"
+        ,
+        logger.info(message.chat.__dict__)
+    )      
 bot.infinity_polling()
