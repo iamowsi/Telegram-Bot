@@ -1,70 +1,118 @@
 import os
+import io
 import logging
 import telebot
-from telebot.types import InlineKeyboardButton,InlineKeyboardMarkup
+from PIL import Image, ImageOps
+from telebot.types import Message
+
 logger = telebot.logger
 logger.setLevel(logging.INFO)
 
 API_TOKEN = os.environ.get("API_TOKEN")
 bot = telebot.TeleBot(API_TOKEN)
 
-@bot.message_handler(commands=['start'])
-def send_welcome(message):
-    markup = InlineKeyboardMarkup()
-    cantact_us = InlineKeyboardButton("ارتباط مستقیم با ما",callback_data="cantact_us")
-    problem = InlineKeyboardButton("ثبت مشکل",callback_data="problem")
-    markup.add(cantact_us)
-    markup.add(problem)
-    bot.send_message(message.chat.id, "برای دریافت اطلاعات تماس، روی دکمه زیر کلیک کنید:",reply_markup=markup)
+SUPPORTED_EXT = {".jpg", ".jpeg", ".png"}
+MAX_DIMENSION = 1920      
+JPEG_QUALITY = 70        
 
-@bot.callback_query_handler(func=lambda call:True)
-def reply_call(call):
-    if call.data=="cantact_us":
-        bot.send_contact(chat_id=call.message.chat.id,
-                         phone_number="+989397579687",
-                         first_name="شرکت",
-                         last_name="شما"
-                         )
-        bot.send_contact(chat_id=call.message.chat.id,
-                         phone_number="+989158567953",
-                         first_name="شرکت",
-                         last_name="شما"
-                         )
 
-    if call.data=="problem":
-        bot.send_message(call.message.chat.id,"لطفا مشکل خود را وارد نمایید:")
-        bot.register_next_step_handler(call.message, receive_problem)
-def receive_problem(message):
-    if message.text and message.text.startswith('/'):
-        bot.send_message(message.chat.id, "عملیات لغو شد. با /start منو را باز کنید.")
-        return
+def compress_image(data: bytes, ext: str):
+    """
+    ورودی: بایت‌های عکس و پسوند
+    خروجی: (BytesIO, حجم جدید به بایت)
+    """
+    img = Image.open(io.BytesIO(data))
+    img = ImageOps.exif_transpose(img)  
 
-    if not message.text or not message.text.strip():
-        bot.send_message(message.chat.id, "⚠️ لطفاً مشکل خود را به صورت متن وارد نمایید.")
-        bot.register_next_step_handler(message, receive_problem)
-        return
-    # if len(receive_problem) < 5:
-    #     bot.send_message(
-    #         message.chat.id,
-    #         "⚠️ توضیح مشکل خیلی کوتاه است. لطفاً کمی بیشتر توضیح دهید."
-    #     )
-    #     bot.register_next_step_handler(message, receive_problem)
-    #     return
-    # normalized = receive_problem.replace(" ", "").replace("-", "").replace(".", "")
-    # if normalized.isdigit():
-    #     bot.send_message(
-    #         message.chat.id,
-    #         "⚠️ لطفاً مشکل خود را به صورت *متنی* توضیح دهید، نه فقط عدد.\n"
-    #         "مثال: «برنامه هنگام ورود باز نمی‌شود»",
-    #         parse_mode="Markdown"
-    #     )
-        # bot.register_next_step_handler(message, receive_problem)
-        # return
+ 
+    if max(img.size) > MAX_DIMENSION:
+        img.thumbnail((MAX_DIMENSION, MAX_DIMENSION), Image.LANCZOS)
+
+    out = io.BytesIO()
+    ext = ext.lower()
+
+    if ext in (".jpg", ".jpeg"):
+  
+        if img.mode in ("RGBA", "P", "LA"):
+            img = img.convert("RGB")
+        img.save(out, format="JPEG", quality=JPEG_QUALITY, optimize=True)
+        out.name = "compressed.jpg"
+    else:  
+        img.save(out, format="PNG", optimize=True)
+        out.name = "compressed.png"
+
+    new_size = out.tell()
+    out.seek(0)
+    return out, new_size
+
+
+@bot.message_handler(commands=['start', 'help'])
+def send_welcome(message: Message):
     bot.send_message(
         message.chat.id,
-        f"✅ مشکل شما با موفقیت ثبت شد.\n\n"
-        f"کارشناسان ما در اسرع وقت با شما تماس خواهند گرفت.\n"
-        ,
-        logger.info(message.chat.__dict__)
-    )      
+        "👋 سلام!\n\n"
+        "عکس خود را با فرمت *jpg*، *jpeg* یا *png* بفرستید تا فشرده‌اش کنم و برگردانم.\n\n"
+        "💡 *نکته:* برای بهترین نتیجه، عکس را به‌صورت «File» (بدون فشرده‌سازی تلگرام) بفرستید.",
+        parse_mode="Markdown"
+    )
+
+
+@bot.message_handler(content_types=['photo'])
+def handle_photo(message: Message):
+   
+    file_info = bot.get_file(message.photo[-1].file_id)
+    data = bot.download_file(file_info.file_path)
+
+    try:
+        compressed, new_size = compress_image(data, ".jpg")
+    except Exception as e:
+        bot.reply_to(message, f"❌ خطا در پردازش عکس: {e}")
+        return
+
+    bot.send_document(
+        message.chat.id,
+        compressed,
+        caption=(
+            f"✅ فشرده شد\n"
+            f"📦 حجم اصلی: {len(data)/1024:.1f} KB\n"
+            f"📦 حجم جدید: {new_size/1024:.1f} KB"
+        )
+    )
+
+@bot.message_handler(content_types=['document'])
+def handle_document(message: Message):
+    doc = message.document
+    filename = doc.file_name or ""
+    ext = os.path.splitext(filename)[1].lower()
+
+  
+    if ext not in SUPPORTED_EXT:
+        bot.reply_to(message, "⚠️ فقط فرمت‌های jpg، jpeg و png پذیرفته می‌شود.")
+        return
+
+    if doc.file_size and doc.file_size > 20 * 1024 * 1024:
+        bot.reply_to(message, "⚠️ حجم فایل بیش از ۲۰ مگابایت است و قابل پردازش نیست.")
+        return
+
+    file_info = bot.get_file(doc.file_id)
+    data = bot.download_file(file_info.file_path)
+
+    try:
+        compressed, new_size = compress_image(data, ext)
+    except Exception as e:
+        bot.reply_to(message, f"❌ خطا در پردازش عکس: {e}")
+        return
+
+    saving = 100 - (new_size / len(data) * 100) if data else 0
+    bot.send_document(
+        message.chat.id,
+        compressed,
+        caption=(
+            f"✅ فشرده شد\n"
+            f"📦 حجم اصلی: {len(data)/1024:.1f} KB\n"
+            f"📦 حجم جدید: {new_size/1024:.1f} KB\n"
+            f"📉 کاهش: {saving:.1f}%"
+        )
+    )
+
 bot.infinity_polling()
